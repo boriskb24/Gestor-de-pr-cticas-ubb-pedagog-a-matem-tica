@@ -70,4 +70,16 @@ public interface InscripcionRepository extends JpaRepository<Inscripcion, Long> 
             @Param("correo") String correo,
             @Param("anio") Integer anio,
             @Param("periodo") Integer periodo);
+
+    @Query("SELECT i FROM Inscripcion i " +
+           "LEFT JOIN FETCH i.estudiante " +
+           "LEFT JOIN FETCH i.oferta o " +
+           "LEFT JOIN FETCH o.asignaturaPractica " +
+           "LEFT JOIN FETCH o.profesor " +
+           "WHERE ((:rut IS NOT NULL AND i.estudiante.rut = :rut) " +
+           "    OR (:correo IS NOT NULL AND LOWER(i.estudiante.correo) = LOWER(:correo))) " +
+           "ORDER BY o.anio DESC, o.periodo DESC")
+    List<Inscripcion> findActiveInscripcionesByEstudiante(
+            @Param("rut") String rut,
+            @Param("correo") String correo);
 }

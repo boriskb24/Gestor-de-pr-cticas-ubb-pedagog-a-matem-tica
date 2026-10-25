@@ -15,5 +15,7 @@ public interface AsignacionRepository extends JpaRepository<Asignacion, Long> {
     List<Asignacion> findByInscripcionIdWithEvaluador(@Param("inscripcionId") Long inscripcionId);
 
     List<Asignacion> findByInscripcionId(Long inscripcionId);
+
+    long countByInscripcionId(Long inscripcionId);
 }
 

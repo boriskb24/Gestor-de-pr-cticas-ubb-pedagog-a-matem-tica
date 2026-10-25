@@ -88,4 +88,7 @@ public interface EvaluacionSemestralRepository extends JpaRepository<EvaluacionS
            "WHERE i.estudiante.rut = :rutEstudiante " +
            "ORDER BY es.fecha ASC, es.id ASC")
     List<EvaluacionSemestral> findHistoricoPorRutEstudiante(@Param("rutEstudiante") String rutEstudiante);
+
+    @Query("SELECT COUNT(es) FROM EvaluacionSemestral es JOIN es.asignacion a WHERE a.inscripcion.id = :inscripcionId")
+    long countByInscripcionId(@Param("inscripcionId") Long inscripcionId);
 }

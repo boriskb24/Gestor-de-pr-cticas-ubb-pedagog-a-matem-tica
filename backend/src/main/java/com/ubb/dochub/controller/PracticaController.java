@@ -123,6 +123,36 @@ public class PracticaController {
         return ResponseEntity.ok(response);
     }
 
+    // 2b.1 Resumen del estado general y avance de la práctica del estudiante
+    @GetMapping("/resumen-avance")
+    public ResponseEntity<Map<String, Object>> obtenerResumenAvance(
+            @RequestParam(required = false) String correoEstudiante,
+            @RequestParam(required = false) String rutEstudiante,
+            @RequestParam(required = false) Long inscripcionId,
+            @RequestParam(value = "email", required = false) String email,
+            @RequestParam(value = "userEmail", required = false) String userEmail) {
+        String effectiveEmail = (correoEstudiante != null && !correoEstudiante.isBlank())
+                ? correoEstudiante
+                : ((email != null && !email.isBlank()) ? email : userEmail);
+        Map<String, Object> resumen = practicaService.obtenerResumenAvanceEstudiante(effectiveEmail, rutEstudiante, inscripcionId);
+        return ResponseEntity.ok(resumen);
+    }
+
+    @GetMapping("/estudiantes/{rut}/resumen-avance")
+    public ResponseEntity<Map<String, Object>> obtenerResumenAvancePorRut(
+            @PathVariable("rut") String rut,
+            @RequestParam(required = false) Long inscripcionId) {
+        Map<String, Object> resumen = practicaService.obtenerResumenAvanceEstudiante(null, rut, inscripcionId);
+        return ResponseEntity.ok(resumen);
+    }
+
+    @GetMapping("/inscripciones/{inscripcionId}/resumen-avance")
+    public ResponseEntity<Map<String, Object>> obtenerResumenAvancePorInscripcion(
+            @PathVariable("inscripcionId") Long inscripcionId) {
+        Map<String, Object> resumen = practicaService.obtenerResumenAvanceEstudiante(null, null, inscripcionId);
+        return ResponseEntity.ok(resumen);
+    }
+
     // 2c. Consulta de evolución histórica de evaluaciones para Prof. Colaborador / Tutor
     @GetMapping("/evaluaciones/evolucion")
     public ResponseEntity<EvaluacionesResponseDto> obtenerEvolucionEvaluaciones(

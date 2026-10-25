@@ -88,4 +88,7 @@ public interface EvaluacionClaseRepository extends JpaRepository<EvaluacionClase
            "WHERE i.estudiante.rut = :rutEstudiante " +
            "ORDER BY c.fecha ASC, c.horaInicio ASC, ec.id ASC")
     List<EvaluacionClase> findHistoricoPorRutEstudiante(@Param("rutEstudiante") String rutEstudiante);
+
+    @Query("SELECT COUNT(ec) FROM EvaluacionClase ec JOIN ec.clase c WHERE c.inscripcion.id = :inscripcionId")
+    long countByInscripcionId(@Param("inscripcionId") Long inscripcionId);
 }

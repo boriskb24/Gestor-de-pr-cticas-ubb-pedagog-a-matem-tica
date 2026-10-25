@@ -47,4 +47,12 @@ public interface ClaseRepository extends JpaRepository<Clase, Long> {
            "JOIN FETCH i.estudiante e " +
            "ORDER BY p.fecha DESC, p.id DESC")
     List<Clase> findAllClasesWithPlanificacion();
+
+    long countByInscripcionId(Long inscripcionId);
+
+    @Query("SELECT COUNT(c) FROM Clase c WHERE c.inscripcion.id = :inscripcionId AND c.planificacion IS NOT NULL")
+    long countConPlanificacionByInscripcionId(@Param("inscripcionId") Long inscripcionId);
+
+    @Query("SELECT COUNT(c) FROM Clase c WHERE c.inscripcion.id = :inscripcionId AND c.planificacion IS NOT NULL AND c.planificacion.estado = com.ubb.dochub.entity.EstadoPlanificacion.APROBADA")
+    long countAprobadasByInscripcionId(@Param("inscripcionId") Long inscripcionId);
 }

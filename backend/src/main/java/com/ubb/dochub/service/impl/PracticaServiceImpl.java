@@ -5,6 +5,10 @@ import com.ubb.dochub.dto.EvaluacionSEMDto;
 import com.ubb.dochub.dto.EvaluacionesResponseDto;
 import com.ubb.dochub.dto.InformeEntregaResponse;
 import com.ubb.dochub.dto.TipoFiltroEvaluacion;
+import com.ubb.dochub.entity.Asignacion;
+import com.ubb.dochub.entity.AsignaturaPractica;
+import com.ubb.dochub.entity.Clase;
+import com.ubb.dochub.entity.EstadoPlanificacion;
 import com.ubb.dochub.entity.Estudiante;
 import com.ubb.dochub.entity.Evaluador;
 import com.ubb.dochub.entity.EvaluacionClase;
@@ -12,8 +16,11 @@ import com.ubb.dochub.entity.EvaluacionSemestral;
 import com.ubb.dochub.entity.Informe;
 import com.ubb.dochub.entity.Inscripcion;
 import com.ubb.dochub.entity.Oferta;
+import com.ubb.dochub.entity.Profesor;
 import com.ubb.dochub.entity.TipoEmisor;
 import com.ubb.dochub.entity.User;
+import com.ubb.dochub.repository.AsignacionRepository;
+import com.ubb.dochub.repository.ClaseRepository;
 import com.ubb.dochub.repository.EstudianteRepository;
 import com.ubb.dochub.repository.EvaluacionClaseRepository;
 import com.ubb.dochub.repository.EvaluacionSemestralRepository;
@@ -35,7 +42,9 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -54,6 +63,12 @@ public class PracticaServiceImpl implements PracticaService {
 
     @Autowired
     private EvaluacionSemestralRepository evaluacionSemestralRepository;
+
+    @Autowired
+    private AsignacionRepository asignacionRepository;
+
+    @Autowired
+    private ClaseRepository claseRepository;
 
     @Autowired
     private UserRepository userRepository;
@@ -800,5 +815,241 @@ public class PracticaServiceImpl implements PracticaService {
                 java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())));
 
         return new EvaluacionesResponseDto(listaClase, listaSemestral);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> obtenerResumenAvanceEstudiante(String correoEstudiante, String rutEstudiante, Long inscripcionId) {
+        String correoNorm = (correoEstudiante != null && !correoEstudiante.trim().isEmpty()) ? correoEstudiante.trim().toLowerCase() : null;
+        String rutNorm = (rutEstudiante != null && !rutEstudiante.trim().isEmpty()) ? rutEstudiante.trim() : null;
+
+        Inscripcion inscripcion = null;
+
+        // 1. Si viene un ID específico de inscripción, buscarla directamente con detalles
+        if (inscripcionId != null) {
+            inscripcion = inscripcionRepository.findByIdWithDetails(inscripcionId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Inscripción no encontrada con ID: " + inscripcionId));
+        }
+
+        // 2. Si no viene inscripcionId, resolver a través de rut/correo
+        if (inscripcion == null) {
+            if (correoNorm == null && rutNorm == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Debe proporcionar el correo, RUT o ID de inscripción del estudiante.");
+            }
+
+            List<Inscripcion> inscripciones = inscripcionRepository.findActiveInscripcionesByEstudiante(rutNorm, correoNorm);
+            if (!inscripciones.isEmpty()) {
+                inscripcion = inscripciones.get(0);
+            }
+        }
+
+        // Si el estudiante no tiene ninguna inscripción registrada
+        if (inscripcion == null) {
+            Estudiante est = null;
+            if (rutNorm != null) est = estudianteRepository.findById(rutNorm).orElse(null);
+            if (est == null && correoNorm != null) est = estudianteRepository.findByCorreo(correoNorm).orElse(null);
+
+            if (est == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Estudiante no encontrado en el sistema.");
+            }
+
+            Map<String, Object> vacio = new LinkedHashMap<>();
+            vacio.put("estudianteRut", est.getRut());
+            vacio.put("estudianteNombre", (est.getPrimerNombre() + " " + est.getApellidoPaterno() + " " + est.getApellidoMaterno()).trim());
+            vacio.put("estudianteCorreo", est.getCorreo());
+            vacio.put("inscripcionId", null);
+            vacio.put("estadoGeneral", "SIN_PRACTICA");
+            vacio.put("etapaActual", "Sin práctica inscrita actualmente");
+            vacio.put("porcentajeAvance", 0);
+
+            Map<String, Object> hitosVacios = new LinkedHashMap<>();
+            hitosVacios.put("centroAsignado", false);
+            hitosVacios.put("establecimiento", "Sin centro asignado");
+            hitosVacios.put("evaluadoresAsignadosCount", 0);
+            hitosVacios.put("totalClases", 0);
+            hitosVacios.put("planificacionesSubidasCount", 0);
+            hitosVacios.put("planificacionesAprobadasCount", 0);
+            hitosVacios.put("planificacionesPendientesCount", 0);
+            hitosVacios.put("planificacionesRechazadasCount", 0);
+            hitosVacios.put("evaluacionesClaseCount", 0);
+            hitosVacios.put("evaluacionesSemestralesCount", 0);
+            hitosVacios.put("totalEvaluacionesCount", 0);
+            hitosVacios.put("informeFinalEntregado", false);
+            hitosVacios.put("informeFinalFecha", null);
+            hitosVacios.put("informeFinalNombre", null);
+            hitosVacios.put("informeFinalUrl", null);
+
+            vacio.put("hitos", hitosVacios);
+            return vacio;
+        }
+
+        // Datos del estudiante y la oferta
+        Estudiante estudiante = inscripcion.getEstudiante();
+        Oferta oferta = inscripcion.getOferta();
+        AsignaturaPractica asignatura = (oferta != null) ? oferta.getAsignaturaPractica() : null;
+        Profesor profesorGuia = (oferta != null) ? oferta.getProfesor() : null;
+
+        Long idInscripcion = inscripcion.getId();
+
+        // Consultar componentes de la práctica
+        // A. Asignaciones de centro y evaluadores
+        List<Asignacion> asignaciones = asignacionRepository.findByInscripcionIdWithEvaluador(idInscripcion);
+        boolean tieneAsignacion = !asignaciones.isEmpty();
+        String establecimiento = "Sin centro asignado";
+        if (tieneAsignacion) {
+            establecimiento = asignaciones.stream()
+                    .map(Asignacion::getEstablecimiento)
+                    .filter(java.util.Objects::nonNull)
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .findFirst()
+                    .orElse("Liceo Bicentenario de Excelencia Polivalente San Nicolás");
+        }
+        int totalEvaluadores = asignaciones.size();
+
+        // B. Clases y Planificaciones
+        List<Clase> clases = claseRepository.findByInscripcionId(idInscripcion);
+        int totalClases = clases.size();
+        long planificacionesSubidas = clases.stream()
+                .filter(c -> c.getPlanificacion() != null)
+                .count();
+        long planificacionesAprobadas = clases.stream()
+                .filter(c -> c.getPlanificacion() != null && c.getPlanificacion().getEstado() == EstadoPlanificacion.APROBADA)
+                .count();
+        long planificacionesPendientes = clases.stream()
+                .filter(c -> c.getPlanificacion() != null && c.getPlanificacion().getEstado() == EstadoPlanificacion.PENDIENTE)
+                .count();
+        long planificacionesRechazadas = clases.stream()
+                .filter(c -> c.getPlanificacion() != null && c.getPlanificacion().getEstado() == EstadoPlanificacion.RECHAZADA)
+                .count();
+
+        // C. Evaluaciones
+        List<EvaluacionClase> evalClases = evaluacionClaseRepository.findByInscripcionId(idInscripcion);
+        List<EvaluacionSemestral> evalSemestrales = evaluacionSemestralRepository.findByInscripcionId(idInscripcion);
+        int totalEvaluaciones = evalClases.size() + evalSemestrales.size();
+
+        // D. Informe Final
+        List<Informe> informes = informeRepository.findByInscripcionIdOrderByIdDesc(idInscripcion);
+        boolean tieneInformeFinal = !informes.isEmpty();
+        Informe ultimoInforme = tieneInformeFinal ? informes.get(0) : null;
+        String fechaInforme = (ultimoInforme != null && ultimoInforme.getFecha() != null)
+                ? ultimoInforme.getFecha().toString()
+                : null;
+        String archivoInformeNombre = (ultimoInforme != null && ultimoInforme.getArchivo() != null)
+                ? Paths.get(ultimoInforme.getArchivo()).getFileName().toString()
+                : null;
+        String archivoInformeUrl = (ultimoInforme != null)
+                ? "/api/practicas/informes/" + ultimoInforme.getId() + "/archivo"
+                : null;
+
+        // CÁLCULO DE AVANCE Y ESTADO GENERAL
+        // Modelo ponderado sobre 100%:
+        // 1. Inscripción activa: 10%
+        // 2. Centro de práctica asignado: 15%
+        // 3. Planificaciones de clase:
+        //    - Al menos 1 entregada: +15%
+        //    - Al menos 1 aprobada: +15%
+        // 4. Evaluaciones de desempeño:
+        //    - Evaluación de clase realizada: +15%
+        //    - Evaluación semestral realizada: +10%
+        // 5. Informe final de práctica entregado: +20%
+        int porcentajeAvance = 10;
+
+        if (tieneAsignacion) {
+            porcentajeAvance += 15;
+        }
+        if (planificacionesSubidas > 0) {
+            porcentajeAvance += 15;
+        }
+        if (planificacionesAprobadas > 0) {
+            porcentajeAvance += 15;
+        }
+        if (!evalClases.isEmpty()) {
+            porcentajeAvance += 15;
+        }
+        if (!evalSemestrales.isEmpty()) {
+            porcentajeAvance += 10;
+        }
+        if (tieneInformeFinal) {
+            porcentajeAvance += 20;
+        }
+
+        porcentajeAvance = Math.min(100, porcentajeAvance);
+
+        // Determinación del Estado General y Etapa del Proceso
+        String estadoGeneral;
+        String etapaActual;
+
+        if (porcentajeAvance == 100) {
+            estadoGeneral = "FINALIZADA";
+            etapaActual = "Práctica profesional y documentación curricular completadas";
+        } else if (tieneInformeFinal) {
+            estadoGeneral = "EN_REVISION_FINAL";
+            etapaActual = "Informe final entregado - En revisión docente y cierre de acta";
+        } else if (totalEvaluaciones > 0) {
+            estadoGeneral = "EN_EVALUACION";
+            etapaActual = "Evaluaciones de desempeño en curso - Pendiente entrega de informe final";
+        } else if (planificacionesAprobadas > 0) {
+            estadoGeneral = "EN_DESARROLLO";
+            etapaActual = "Planificaciones aprobadas - Clases y horas de práctica en ejecución";
+        } else if (planificacionesSubidas > 0) {
+            estadoGeneral = "PLANIFICACIONES_PENDIENTES";
+            etapaActual = "Planificaciones de clase entregadas - En espera de retroalimentación docente";
+        } else if (tieneAsignacion) {
+            estadoGeneral = "ASIGNADA";
+            etapaActual = "Centro de práctica y evaluadores asignados - Pendiente inicio de clases";
+        } else {
+            estadoGeneral = "INSCRITA";
+            etapaActual = "Inscripción confirmada - En espera de asignación de centro de práctica";
+        }
+
+        String nombreEstudiante = estudiante != null
+                ? (estudiante.getPrimerNombre() + " " + estudiante.getApellidoPaterno() + " " + estudiante.getApellidoMaterno()).trim()
+                : "Estudiante";
+
+        String nombreProfesor = profesorGuia != null
+                ? (profesorGuia.getPrimerNombre() + " " + profesorGuia.getApellidoPaterno()).trim()
+                : "Sin profesor guía asignado";
+
+        Map<String, Object> resultado = new LinkedHashMap<>();
+        resultado.put("estudianteRut", estudiante != null ? estudiante.getRut() : rutNorm);
+        resultado.put("estudianteNombre", nombreEstudiante);
+        resultado.put("estudianteCorreo", estudiante != null ? estudiante.getCorreo() : correoNorm);
+        resultado.put("inscripcionId", idInscripcion);
+        resultado.put("ofertaId", oferta != null ? oferta.getId() : null);
+        resultado.put("asignaturaCodigo", asignatura != null ? asignatura.getCodigo() : "INF-PRA");
+        resultado.put("asignaturaNombre", asignatura != null ? asignatura.getNombre() : "Práctica Profesional");
+        resultado.put("periodoAcademico", (oferta != null) ? (oferta.getAnio() + "-" + oferta.getPeriodo()) : "2026-1");
+        resultado.put("profesorGuiaNombre", nombreProfesor);
+        resultado.put("profesorGuiaCorreo", profesorGuia != null ? profesorGuia.getCorreo() : null);
+
+        // Estado y Progreso
+        resultado.put("estadoGeneral", estadoGeneral);
+        resultado.put("etapaActual", etapaActual);
+        resultado.put("porcentajeAvance", porcentajeAvance);
+
+        // Desglose de Hitos
+        Map<String, Object> hitos = new LinkedHashMap<>();
+        hitos.put("centroAsignado", tieneAsignacion);
+        hitos.put("establecimiento", establecimiento);
+        hitos.put("evaluadoresAsignadosCount", totalEvaluadores);
+
+        hitos.put("totalClases", totalClases);
+        hitos.put("planificacionesSubidasCount", planificacionesSubidas);
+        hitos.put("planificacionesAprobadasCount", planificacionesAprobadas);
+        hitos.put("planificacionesPendientesCount", planificacionesPendientes);
+        hitos.put("planificacionesRechazadasCount", planificacionesRechazadas);
+
+        hitos.put("evaluacionesClaseCount", evalClases.size());
+        hitos.put("evaluacionesSemestralesCount", evalSemestrales.size());
+        hitos.put("totalEvaluacionesCount", totalEvaluaciones);
+
+        hitos.put("informeFinalEntregado", tieneInformeFinal);
+        hitos.put("informeFinalFecha", fechaInforme);
+        hitos.put("informeFinalNombre", archivoInformeNombre);
+        hitos.put("informeFinalUrl", archivoInformeUrl);
+
+        resultado.put("hitos", hitos);
+        return resultado;
     }
 }

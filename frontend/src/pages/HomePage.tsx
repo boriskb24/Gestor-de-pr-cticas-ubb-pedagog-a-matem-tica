@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Navbar } from '../components/Navbar'
 import { useAuth } from '../context/AuthContext'
-import { getPlanificaciones, Planificacion, getOfertasForProfesor, OfertaDto, getDetalleEstudianteByCorreo, getMiInforme } from '../services/api'
+import { getPlanificaciones, Planificacion, getOfertasForProfesor, OfertaDto, getDetalleEstudianteByCorreo, getMiInforme, getResumenAvanceEstudiante, ResumenAvanceDto } from '../services/api'
 import {
   Search,
   FileText,
@@ -54,6 +54,7 @@ export const HomePage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [userPlanificaciones, setUserPlanificaciones] = useState<Planificacion[]>([])
   const [informeEntregado, setInformeEntregado] = useState<{ id?: number; nombreArchivo: string; fechaEntrega?: string; archivoUrl?: string } | null>(null)
+  const [resumenAvance, setResumenAvance] = useState<ResumenAvanceDto | null>(null)
 
   const [studentsList, setStudentsList] = useState<PracticeStudent[]>(() => {
     const saved = localStorage.getItem('ubb_practice_students_list')
@@ -166,6 +167,10 @@ export const HomePage: React.FC = () => {
 
       // Si es estudiante, consultar detalle en backend para obtener su informe final más reciente
       if (!isDocenteOrAdmin && user?.email) {
+        getResumenAvanceEstudiante(user.email).then(res => {
+          if (res) setResumenAvance(res)
+        }).catch(err => console.error('Error fetching resumen avance:', err))
+
         try {
           const detalle = await getDetalleEstudianteByCorreo(user.email, user.email)
           if (detalle?.informeActual) {
@@ -533,17 +538,29 @@ export const HomePage: React.FC = () => {
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: '600', color: '#ffffff', fontSize: '15px' }}>{displayName}</div>
                       <div style={{ fontSize: '13px', color: '#94a3b8' }}>Estudiante • {user?.email}</div>
+                      {resumenAvance?.etapaActual && (
+                        <div style={{ fontSize: '11.5px', color: '#93c5fd', marginTop: '3px' }}>
+                          Etapa actual: {resumenAvance.etapaActual}
+                        </div>
+                      )}
                     </div>
-                    <span style={{ 
-                      backgroundColor: tieneInformeFinal ? '#10b981' : '#f59e0b', 
-                      color: '#ffffff', 
-                      padding: '4px 12px', 
-                      borderRadius: '9999px', 
-                      fontSize: '12px', 
-                      fontWeight: '600' 
-                    }}>
-                      {tieneInformeFinal ? 'Informe Entregado' : 'Informe Pendiente'}
-                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                      <span style={{ 
+                        backgroundColor: resumenAvance?.estadoGeneral === 'FINALIZADA' ? '#10b981' : resumenAvance?.estadoGeneral === 'EN_REVISION_FINAL' ? '#0284c7' : '#f59e0b', 
+                        color: '#ffffff', 
+                        padding: '4px 12px', 
+                        borderRadius: '9999px', 
+                        fontSize: '12px', 
+                        fontWeight: '600' 
+                      }}>
+                        {resumenAvance ? resumenAvance.estadoGeneral.replace(/_/g, ' ') : (tieneInformeFinal ? 'Informe Entregado' : 'Informe Pendiente')}
+                      </span>
+                      {resumenAvance && (
+                        <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '500' }}>
+                          Avance global: {resumenAvance.porcentajeAvance}%
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '20px' }}>
@@ -672,13 +689,17 @@ export const HomePage: React.FC = () => {
                 <div style={styles.statGrid}>
                   <div style={styles.statCard}>
                     <div style={styles.statIcon}><Clock size={18} color="#60a5fa" /></div>
-                    <div style={styles.statValue}>360h</div>
+                    <div style={styles.statValue}>
+                      {resumenAvance ? `${Math.round((resumenAvance.porcentajeAvance * 360) / 100)}h` : '360h'}
+                    </div>
                     <div style={styles.statLabel}>Horas Registradas</div>
                   </div>
                   <div style={styles.statCard}>
-                    <div style={styles.statIcon}><CheckCircle size={18} color="#22c55e" /></div>
-                    <div style={styles.statValue}>100%</div>
-                    <div style={styles.statLabel}>Avance de Horas</div>
+                    <div style={styles.statIcon}><CheckCircle size={18} color={resumenAvance?.porcentajeAvance === 100 ? '#22c55e' : '#3b82f6'} /></div>
+                    <div style={styles.statValue}>
+                      {resumenAvance ? `${resumenAvance.porcentajeAvance}%` : '100%'}
+                    </div>
+                    <div style={styles.statLabel}>Avance de Práctica</div>
                   </div>
                   <div style={styles.statCard}>
                     <div style={styles.statIcon}><FileText size={18} color="#f59e0b" /></div>

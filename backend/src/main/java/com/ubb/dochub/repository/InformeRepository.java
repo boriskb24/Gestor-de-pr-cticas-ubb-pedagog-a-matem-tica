@@ -15,5 +15,7 @@ public interface InformeRepository extends JpaRepository<Informe, Long> {
     List<Informe> findByInscripcionIdAndEmisorOrderByIdDesc(Long inscripcionId, TipoEmisor emisor);
     Optional<Informe> findFirstByInscripcionIdOrderByFechaDesc(Long inscripcionId);
     Optional<Informe> findFirstByInscripcionIdOrderByIdDesc(Long inscripcionId);
+    long countByInscripcionId(Long inscripcionId);
+    boolean existsByInscripcionId(Long inscripcionId);
 }
 

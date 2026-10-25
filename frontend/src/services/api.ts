@@ -330,4 +330,50 @@ export const evaluarPlanificacion = async (
   return response.data;
 };
 
+export interface ResumenAvanceDto {
+  estudianteRut: string;
+  estudianteNombre: string;
+  estudianteCorreo: string;
+  inscripcionId: number;
+  ofertaId: number;
+  asignaturaCodigo: string;
+  asignaturaNombre: string;
+  periodoAcademico: string;
+  profesorGuiaNombre: string;
+  profesorGuiaCorreo: string;
+  estadoGeneral: string;
+  etapaActual: string;
+  porcentajeAvance: number;
+  hitos: {
+    centroAsignado: boolean;
+    establecimiento: string;
+    evaluadoresAsignadosCount: number;
+    totalClases: number;
+    planificacionesSubidasCount: number;
+    planificacionesAprobadasCount: number;
+    planificacionesPendientesCount: number;
+    planificacionesRechazadasCount: number;
+    evaluacionesClaseCount: number;
+    evaluacionesSemestralesCount: number;
+    totalEvaluacionesCount: number;
+    informeFinalEntregado: boolean;
+    informeFinalFecha: string | null;
+    informeFinalNombre: string | null;
+    informeFinalUrl: string | null;
+  };
+}
+
+export const getResumenAvanceEstudiante = async (email?: string, rut?: string): Promise<ResumenAvanceDto | null> => {
+  try {
+    const params = new URLSearchParams();
+    if (email) params.append('email', email);
+    if (rut) params.append('rutEstudiante', rut);
+    const response = await API.get<ResumenAvanceDto>(`/practicas/resumen-avance?${params.toString()}`);
+    return response.data;
+  } catch (error) {
+    return null;
+  }
+};
+
 export default API
+

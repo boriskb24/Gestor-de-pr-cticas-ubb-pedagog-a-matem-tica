@@ -4,6 +4,7 @@ import com.ubb.dochub.dto.EvaluacionesResponseDto;
 import com.ubb.dochub.dto.InformeEntregaResponse;
 import com.ubb.dochub.dto.TipoFiltroEvaluacion;
 import org.springframework.web.multipart.MultipartFile;
+import java.util.Map;
 
 public interface PracticaService {
     // Guardar informe general / estudiante
@@ -42,4 +43,7 @@ public interface PracticaService {
             Long inscripcionId,
             String consultorEmail,
             TipoFiltroEvaluacion tipo);
+
+    // Resumen del estado general de la práctica y porcentaje de avance (Historia de usuario Estudiante)
+    Map<String, Object> obtenerResumenAvanceEstudiante(String correoEstudiante, String rutEstudiante, Long inscripcionId);
 }
