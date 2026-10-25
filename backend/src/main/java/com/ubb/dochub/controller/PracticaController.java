@@ -153,6 +153,36 @@ public class PracticaController {
         return ResponseEntity.ok(resumen);
     }
 
+    // 2b.2 Consulta detallada de tareas, documentos y evaluaciones pendientes con sus fechas límite
+    @GetMapping({"/tareas-pendientes", "/pendientes"})
+    public ResponseEntity<List<Map<String, Object>>> obtenerTareasPendientes(
+            @RequestParam(required = false) String correoEstudiante,
+            @RequestParam(required = false) String rutEstudiante,
+            @RequestParam(required = false) Long inscripcionId,
+            @RequestParam(value = "email", required = false) String email,
+            @RequestParam(value = "userEmail", required = false) String userEmail) {
+        String effectiveEmail = (correoEstudiante != null && !correoEstudiante.isBlank())
+                ? correoEstudiante
+                : ((email != null && !email.isBlank()) ? email : userEmail);
+        List<Map<String, Object>> pendientes = practicaService.obtenerTareasPendientesEstudiante(effectiveEmail, rutEstudiante, inscripcionId);
+        return ResponseEntity.ok(pendientes);
+    }
+
+    @GetMapping("/estudiantes/{rut}/tareas-pendientes")
+    public ResponseEntity<List<Map<String, Object>>> obtenerTareasPendientesPorRut(
+            @PathVariable("rut") String rut,
+            @RequestParam(required = false) Long inscripcionId) {
+        List<Map<String, Object>> pendientes = practicaService.obtenerTareasPendientesEstudiante(null, rut, inscripcionId);
+        return ResponseEntity.ok(pendientes);
+    }
+
+    @GetMapping("/inscripciones/{inscripcionId}/tareas-pendientes")
+    public ResponseEntity<List<Map<String, Object>>> obtenerTareasPendientesPorInscripcion(
+            @PathVariable("inscripcionId") Long inscripcionId) {
+        List<Map<String, Object>> pendientes = practicaService.obtenerTareasPendientesEstudiante(null, null, inscripcionId);
+        return ResponseEntity.ok(pendientes);
+    }
+
     // 2c. Consulta de evolución histórica de evaluaciones para Prof. Colaborador / Tutor
     @GetMapping("/evaluaciones/evolucion")
     public ResponseEntity<EvaluacionesResponseDto> obtenerEvolucionEvaluaciones(

@@ -40,13 +40,18 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class PracticaServiceImpl implements PracticaService {
@@ -1051,5 +1056,229 @@ public class PracticaServiceImpl implements PracticaService {
 
         resultado.put("hitos", hitos);
         return resultado;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> obtenerTareasPendientesEstudiante(String correoEstudiante, String rutEstudiante, Long inscripcionId) {
+        String correoNorm = (correoEstudiante != null && !correoEstudiante.trim().isEmpty()) ? correoEstudiante.trim().toLowerCase() : null;
+        String rutNorm = (rutEstudiante != null && !rutEstudiante.trim().isEmpty()) ? rutEstudiante.trim() : null;
+
+        // 1. Identificar la inscripción a consultar
+        Inscripcion inscripcion = null;
+        if (inscripcionId != null) {
+            inscripcion = inscripcionRepository.findById(inscripcionId).orElse(null);
+        } else if (correoNorm != null || rutNorm != null) {
+            List<Inscripcion> activas = inscripcionRepository.findActiveInscripcionesByEstudiante(rutNorm, correoNorm);
+            if (!activas.isEmpty()) {
+                inscripcion = activas.get(0);
+            } else {
+                List<Inscripcion> porCorreo = (correoNorm != null)
+                        ? inscripcionRepository.findByEstudianteCorreoWithOferta(correoNorm)
+                        : inscripcionRepository.findByEstudianteRutWithOferta(rutNorm);
+                if (!porCorreo.isEmpty()) {
+                    inscripcion = porCorreo.get(0);
+                }
+            }
+        }
+
+        if (inscripcion == null) {
+            Optional<Estudiante> estOpt = Optional.empty();
+            if (correoNorm != null) estOpt = estudianteRepository.findByCorreo(correoNorm);
+            if (estOpt.isEmpty() && rutNorm != null) estOpt = estudianteRepository.findById(rutNorm);
+            if (estOpt.isPresent()) {
+                Map<String, Object> inscPend = new LinkedHashMap<>();
+                inscPend.put("id", "INSC-PENDIENTE");
+                inscPend.put("tipo", "GESTION");
+                inscPend.put("categoria", "INSCRIPCION_PRACTICA");
+                inscPend.put("titulo", "Inscripción de Práctica Pendiente");
+                inscPend.put("descripcion", "No registras ninguna práctica inscrita en el período académico actual. Debes inscribir tu asignatura de práctica.");
+                inscPend.put("estado", "SIN_INSCRIPCION");
+                inscPend.put("prioridad", "CRITICA");
+                inscPend.put("fechaLimite", LocalDate.of(2026, 8, 30).toString());
+                inscPend.put("accionRequerida", "Inscribir asignatura de práctica");
+                inscPend.put("urlAccion", "/practicas");
+                return Collections.singletonList(inscPend);
+            }
+            return Collections.emptyList();
+        }
+
+        Long idInscripcion = inscripcion.getId();
+        Oferta oferta = inscripcion.getOferta();
+
+        LocalDate fechaCierreSemestre = (oferta != null && oferta.getAnio() > 0)
+                ? (oferta.getPeriodo() == 1 ? LocalDate.of(oferta.getAnio(), 11, 30) : LocalDate.of(oferta.getAnio(), 12, 15))
+                : LocalDate.of(2026, 11, 30);
+
+        List<Map<String, Object>> tareasPendientes = new ArrayList<>();
+        LocalDate hoy = LocalDate.now();
+
+        // A. VERIFICACIÓN DE ASIGNACIÓN DE CENTRO DE PRÁCTICA
+        List<Asignacion> asignaciones = asignacionRepository.findByInscripcionIdWithEvaluador(idInscripcion);
+        if (asignaciones.isEmpty()) {
+            Map<String, Object> tareaAsignacion = new LinkedHashMap<>();
+            tareaAsignacion.put("id", "ASIG-" + idInscripcion);
+            tareaAsignacion.put("tipo", "GESTION");
+            tareaAsignacion.put("categoria", "ASIGNACION_CENTRO");
+            tareaAsignacion.put("titulo", "Asignación de Centro de Práctica");
+            tareaAsignacion.put("descripcion", "Tu práctica aún no cuenta con un centro educacional ni evaluadores registrados en el sistema. Debes formalizar tu centro con la coordinación docente.");
+            tareaAsignacion.put("estado", "PENDIENTE_ASIGNACION");
+            tareaAsignacion.put("prioridad", "ALTA");
+            tareaAsignacion.put("fechaLimite", fechaCierreSemestre.minusMonths(2).toString());
+            tareaAsignacion.put("accionRequerida", "Contactar a Coordinación de Prácticas");
+            tareaAsignacion.put("urlAccion", "/perfil");
+            tareasPendientes.add(tareaAsignacion);
+        }
+
+        // B. VERIFICACIÓN DE PLANIFICACIONES DE CLASE
+        List<Clase> clases = claseRepository.findByInscripcionIdWithPlanificacion(idInscripcion);
+        for (Clase c : clases) {
+            LocalDate fechaClase = c.getFecha() != null ? c.getFecha() : fechaCierreSemestre;
+            LocalDate fechaLimitePlan = fechaClase;
+
+            if (c.getPlanificacion() == null) {
+                // Caso 1: Clase sin planificación entregada
+                Map<String, Object> tareaPlan = new LinkedHashMap<>();
+                tareaPlan.put("id", "PLAN-CLASE-" + c.getId());
+                tareaPlan.put("tipo", "PLANIFICACION");
+                tareaPlan.put("categoria", "PLANIFICACION_CLASE");
+                tareaPlan.put("titulo", "Subir Planificación: " + (c.getTema() != null ? c.getTema() : "Clase programada"));
+                tareaPlan.put("descripcion", "Debes preparar y subir el documento PDF de planificación para la clase de " + 
+                        (c.getAsignatura() != null ? c.getAsignatura() : "práctica") + 
+                        (c.getHoraInicio() != null ? (" a las " + c.getHoraInicio()) : "") + ".");
+                tareaPlan.put("estado", "PENDIENTE_ENVIO");
+                tareaPlan.put("prioridad", fechaLimitePlan.isBefore(hoy.plusDays(3)) ? "CRITICA" : "ALTA");
+                tareaPlan.put("fechaLimite", fechaLimitePlan.toString());
+                tareaPlan.put("diasRestantes", java.time.temporal.ChronoUnit.DAYS.between(hoy, fechaLimitePlan));
+                tareaPlan.put("claseId", c.getId());
+                tareaPlan.put("asignatura", c.getAsignatura());
+                tareaPlan.put("tema", c.getTema());
+                tareaPlan.put("accionRequerida", "Subir archivo PDF de planificación");
+                tareaPlan.put("urlAccion", "/planificaciones");
+                tareasPendientes.add(tareaPlan);
+
+            } else if (c.getPlanificacion().getEstado() == EstadoPlanificacion.RECHAZADA) {
+                // Caso 2: Planificación rechazada con observaciones docentes
+                Map<String, Object> tareaPlanRechazada = new LinkedHashMap<>();
+                tareaPlanRechazada.put("id", "PLAN-RECHAZADA-" + c.getPlanificacion().getId());
+                tareaPlanRechazada.put("tipo", "PLANIFICACION");
+                tareaPlanRechazada.put("categoria", "CORRECCION_PLANIFICACION");
+                tareaPlanRechazada.put("titulo", "Corregir Planificación Rechazada: " + (c.getTema() != null ? c.getTema() : "Clase"));
+                String retro = (c.getPlanificacion().getRetroalimentacion() != null && !c.getPlanificacion().getRetroalimentacion().isBlank())
+                        ? c.getPlanificacion().getRetroalimentacion().trim()
+                        : "Planificación rechazada por el profesor guía. Debe realizar correcciones y volver a enviar.";
+                tareaPlanRechazada.put("descripcion", "Observación docente: \"" + retro + "\". Por favor, ajusta tu documento y sube la nueva versión.");
+                tareaPlanRechazada.put("estado", "RECHAZADA_PENDIENTE_CORRECCION");
+                tareaPlanRechazada.put("prioridad", "CRITICA");
+                tareaPlanRechazada.put("fechaLimite", fechaLimitePlan.toString());
+                tareaPlanRechazada.put("diasRestantes", java.time.temporal.ChronoUnit.DAYS.between(hoy, fechaLimitePlan));
+                tareaPlanRechazada.put("claseId", c.getId());
+                tareaPlanRechazada.put("planificacionId", c.getPlanificacion().getId());
+                tareaPlanRechazada.put("asignatura", c.getAsignatura());
+                tareaPlanRechazada.put("tema", c.getTema());
+                tareaPlanRechazada.put("observacionesDocente", retro);
+                tareaPlanRechazada.put("accionRequerida", "Corregir y reemplazar planificación");
+                tareaPlanRechazada.put("urlAccion", "/planificaciones");
+                tareasPendientes.add(tareaPlanRechazada);
+
+            } else if (c.getPlanificacion().getEstado() == EstadoPlanificacion.PENDIENTE) {
+                // Caso 3: Planificación enviada en espera de revisión
+                Map<String, Object> tareaPlanRevision = new LinkedHashMap<>();
+                tareaPlanRevision.put("id", "PLAN-REVISION-" + c.getPlanificacion().getId());
+                tareaPlanRevision.put("tipo", "PLANIFICACION");
+                tareaPlanRevision.put("categoria", "REVISION_PLANIFICACION");
+                tareaPlanRevision.put("titulo", "Planificación en Revisión: " + (c.getTema() != null ? c.getTema() : "Clase"));
+                tareaPlanRevision.put("descripcion", "Tu planificación fue enviada correctamente y se encuentra a la espera de aprobación y comentarios por parte del profesor guía.");
+                tareaPlanRevision.put("estado", "EN_REVISION_DOCENTE");
+                tareaPlanRevision.put("prioridad", "BAJA");
+                tareaPlanRevision.put("fechaLimite", fechaLimitePlan.toString());
+                tareaPlanRevision.put("diasRestantes", java.time.temporal.ChronoUnit.DAYS.between(hoy, fechaLimitePlan));
+                tareaPlanRevision.put("claseId", c.getId());
+                tareaPlanRevision.put("planificacionId", c.getPlanificacion().getId());
+                tareaPlanRevision.put("asignatura", c.getAsignatura());
+                tareaPlanRevision.put("tema", c.getTema());
+                tareaPlanRevision.put("accionRequerida", "En espera de revisión del profesor");
+                tareaPlanRevision.put("urlAccion", "/planificaciones");
+                tareasPendientes.add(tareaPlanRevision);
+            }
+        }
+
+        // C. VERIFICACIÓN DE EVALUACIONES DE CLASE
+        List<EvaluacionClase> evalClases = evaluacionClaseRepository.findByInscripcionId(idInscripcion);
+        Set<Long> clasesEvaluadasIds = evalClases.stream()
+                .filter(ec -> ec.getClase() != null)
+                .map(ec -> ec.getClase().getId())
+                .collect(Collectors.toSet());
+
+        for (Clase c : clases) {
+            if (!clasesEvaluadasIds.contains(c.getId())) {
+                Map<String, Object> tareaEvalClase = new LinkedHashMap<>();
+                tareaEvalClase.put("id", "EVAL-CLASE-PENDIENTE-" + c.getId());
+                tareaEvalClase.put("tipo", "EVALUACION");
+                tareaEvalClase.put("categoria", "EVALUACION_CLASE");
+                tareaEvalClase.put("titulo", "Evaluación de Clase Pendiente: " + (c.getTema() != null ? c.getTema() : "Clase"));
+                tareaEvalClase.put("descripcion", "Falta registrar la pauta de evaluación de desempeño de la clase realizada con fecha " + 
+                        (c.getFecha() != null ? c.getFecha().toString() : "programada") + ".");
+                tareaEvalClase.put("estado", "PENDIENTE_EVALUADOR");
+                tareaEvalClase.put("prioridad", "MEDIA");
+                tareaEvalClase.put("fechaLimite", (c.getFecha() != null ? c.getFecha().plusDays(7).toString() : fechaCierreSemestre.toString()));
+                tareaEvalClase.put("claseId", c.getId());
+                tareaEvalClase.put("asignatura", c.getAsignatura());
+                tareaEvalClase.put("tema", c.getTema());
+                tareaEvalClase.put("accionRequerida", "Coordinar evaluación con profesor colaborador o tutor");
+                tareaEvalClase.put("urlAccion", "/evaluaciones");
+                tareasPendientes.add(tareaEvalClase);
+            }
+        }
+
+        // D. VERIFICACIÓN DE EVALUACIÓN SEMESTRAL
+        List<EvaluacionSemestral> evalSemestrales = evaluacionSemestralRepository.findByInscripcionId(idInscripcion);
+        if (evalSemestrales.isEmpty()) {
+            Map<String, Object> tareaEvalSemestral = new LinkedHashMap<>();
+            tareaEvalSemestral.put("id", "EVAL-SEM-PENDIENTE-" + idInscripcion);
+            tareaEvalSemestral.put("tipo", "EVALUACION");
+            tareaEvalSemestral.put("categoria", "EVALUACION_SEMESTRAL");
+            tareaEvalSemestral.put("titulo", "Evaluación Semestral de Práctica Pendiente");
+            tareaEvalSemestral.put("descripcion", "La pauta de evaluación semestral del tutor o profesor colaborador aún no ha sido registrada en el sistema.");
+            tareaEvalSemestral.put("estado", "PENDIENTE_EVALUADOR");
+            tareaEvalSemestral.put("prioridad", "ALTA");
+            tareaEvalSemestral.put("fechaLimite", fechaCierreSemestre.toString());
+            tareaEvalSemestral.put("accionRequerida", "Solicitar al evaluador institucional completar la evaluación semestral");
+            tareaEvalSemestral.put("urlAccion", "/evaluaciones");
+            tareasPendientes.add(tareaEvalSemestral);
+        }
+
+        // E. VERIFICACIÓN DE INFORME FINAL DE PRÁCTICA
+        List<Informe> informes = informeRepository.findByInscripcionIdOrderByIdDesc(idInscripcion);
+        if (informes.isEmpty()) {
+            Map<String, Object> tareaInforme = new LinkedHashMap<>();
+            tareaInforme.put("id", "INFORME-FINAL-" + idInscripcion);
+            tareaInforme.put("tipo", "DOCUMENTO");
+            tareaInforme.put("categoria", "INFORME_FINAL");
+            tareaInforme.put("titulo", "Entrega de Informe Final de Práctica");
+            tareaInforme.put("descripcion", "Debes redactar y subir el archivo PDF del informe final de práctica profesional con el detalle de las horas cumplidas y actividades.");
+            tareaInforme.put("estado", "PENDIENTE_ENTREGA");
+            tareaInforme.put("prioridad", "ALTA");
+            tareaInforme.put("fechaLimite", fechaCierreSemestre.toString());
+            tareaInforme.put("diasRestantes", java.time.temporal.ChronoUnit.DAYS.between(hoy, fechaCierreSemestre));
+            tareaInforme.put("accionRequerida", "Subir archivo PDF de informe final");
+            tareaInforme.put("urlAccion", "/entrega-informe");
+            tareasPendientes.add(tareaInforme);
+        }
+
+        // Ordenar las tareas pendientes: CRITICA -> ALTA -> MEDIA -> BAJA
+        Map<String, Integer> prioridadPesos = Map.of(
+                "CRITICA", 1,
+                "ALTA", 2,
+                "MEDIA", 3,
+                "BAJA", 4
+        );
+
+        tareasPendientes.sort(Comparator.comparingInt(t -> {
+            String p = (String) t.getOrDefault("prioridad", "MEDIA");
+            return prioridadPesos.getOrDefault(p, 5);
+        }));
+
+        return tareasPendientes;
     }
 }

@@ -4,6 +4,7 @@ import com.ubb.dochub.dto.EvaluacionesResponseDto;
 import com.ubb.dochub.dto.InformeEntregaResponse;
 import com.ubb.dochub.dto.TipoFiltroEvaluacion;
 import org.springframework.web.multipart.MultipartFile;
+import java.util.List;
 import java.util.Map;
 
 public interface PracticaService {
@@ -46,4 +47,7 @@ public interface PracticaService {
 
     // Resumen del estado general de la práctica y porcentaje de avance (Historia de usuario Estudiante)
     Map<String, Object> obtenerResumenAvanceEstudiante(String correoEstudiante, String rutEstudiante, Long inscripcionId);
+
+    // Consulta detallada de tareas, documentos y evaluaciones pendientes con sus fechas límite
+    List<Map<String, Object>> obtenerTareasPendientesEstudiante(String correoEstudiante, String rutEstudiante, Long inscripcionId);
 }

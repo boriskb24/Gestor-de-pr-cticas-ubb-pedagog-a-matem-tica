@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Navbar } from '../components/Navbar'
 import { useAuth } from '../context/AuthContext'
-import { getPlanificaciones, Planificacion, getOfertasForProfesor, OfertaDto, getDetalleEstudianteByCorreo, getMiInforme, getResumenAvanceEstudiante, ResumenAvanceDto } from '../services/api'
+import { getPlanificaciones, Planificacion, getOfertasForProfesor, OfertaDto, getDetalleEstudianteByCorreo, getMiInforme, getResumenAvanceEstudiante, ResumenAvanceDto, getTareasPendientesEstudiante, TareaPendienteDto } from '../services/api'
 import {
   Search,
   FileText,
@@ -55,6 +55,7 @@ export const HomePage: React.FC = () => {
   const [userPlanificaciones, setUserPlanificaciones] = useState<Planificacion[]>([])
   const [informeEntregado, setInformeEntregado] = useState<{ id?: number; nombreArchivo: string; fechaEntrega?: string; archivoUrl?: string } | null>(null)
   const [resumenAvance, setResumenAvance] = useState<ResumenAvanceDto | null>(null)
+  const [tareasPendientes, setTareasPendientes] = useState<TareaPendienteDto[]>([])
 
   const [studentsList, setStudentsList] = useState<PracticeStudent[]>(() => {
     const saved = localStorage.getItem('ubb_practice_students_list')
@@ -170,6 +171,10 @@ export const HomePage: React.FC = () => {
         getResumenAvanceEstudiante(user.email).then(res => {
           if (res) setResumenAvance(res)
         }).catch(err => console.error('Error fetching resumen avance:', err))
+
+        getTareasPendientesEstudiante(user.email).then(list => {
+          if (list) setTareasPendientes(list)
+        }).catch(err => console.error('Error fetching tareas pendientes:', err))
 
         try {
           const detalle = await getDetalleEstudianteByCorreo(user.email, user.email)
@@ -707,41 +712,86 @@ export const HomePage: React.FC = () => {
                     <div style={styles.statLabel}>Planificaciones</div>
                   </div>
                   <div style={styles.statCard}>
-                    <div style={styles.statIcon}><GraduationCap size={18} color={tieneInformeFinal ? '#22c55e' : '#a855f7'} /></div>
-                    <div style={styles.statValue}>{tieneInformeFinal ? '1' : '0'}</div>
-                    <div style={styles.statLabel}>{tieneInformeFinal ? 'Informe Listo' : 'Pendiente'}</div>
+                    <div style={styles.statIcon}><GraduationCap size={18} color={tareasPendientes.length === 0 ? '#22c55e' : '#f59e0b'} /></div>
+                    <div style={styles.statValue}>{tareasPendientes.length}</div>
+                    <div style={styles.statLabel}>{tareasPendientes.length === 0 ? 'Al Día' : 'Tareas Pendientes'}</div>
                   </div>
                 </div>
 
-                {/* Hitos y Fechas Clave */}
+                {/* Tareas, Documentos y Evaluaciones Pendientes */}
                 <div style={styles.card}>
                   <div style={styles.cardHeader}>
-                    <h3 style={styles.cardTitle}>Hitos y Fechas Clave</h3>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                      <h3 style={styles.cardTitle}>Tareas y Acciones Pendientes</h3>
+                      <span style={{ 
+                        fontSize: '11px', 
+                        fontWeight: '600', 
+                        padding: '3px 8px', 
+                        borderRadius: '9999px',
+                        backgroundColor: tareasPendientes.length > 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
+                        color: tareasPendientes.length > 0 ? '#f87171' : '#4ade80'
+                      }}>
+                        {tareasPendientes.length} pendientes
+                      </span>
+                    </div>
                   </div>
                   <div style={styles.cardBody}>
-                    <div style={{ ...styles.recentDocItem, alignItems: 'flex-start' }}>
-                      <Calendar size={18} color={tieneInformeFinal ? '#22c55e' : '#f59e0b'} style={{ marginTop: '2px' }} />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#f8fafc' }}>
-                          Entrega Informe Final {tieneInformeFinal ? '(Completado)' : '(Pendiente)'}
-                        </div>
-                        <div style={{ fontSize: '11.5px', color: tieneInformeFinal ? '#4ade80' : '#f59e0b', marginTop: '2px' }}>
-                          {tieneInformeFinal ? `Subido: ${informeEntregado?.nombreArchivo || 'PDF'}` : 'Plazo máx: 30 de Noviembre'}
-                        </div>
+                    {tareasPendientes.length === 0 ? (
+                      <div style={{ padding: '20px', textAlign: 'center', color: '#4ade80', fontSize: '13px' }}>
+                        🎉 ¡Excelente! No tienes tareas ni evaluaciones pendientes. Tu práctica está al día.
                       </div>
-                    </div>
+                    ) : (
+                      tareasPendientes.map((tarea) => {
+                        const isCritica = tarea.prioridad === 'CRITICA';
+                        const isAlta = tarea.prioridad === 'ALTA';
+                        const badgeColor = isCritica ? '#ef4444' : isAlta ? '#f59e0b' : '#3b82f6';
 
-                    <div style={{ ...styles.recentDocItem, alignItems: 'flex-start' }}>
-                      <CheckSquare size={18} color={totalPlanificaciones > 0 ? '#22c55e' : '#f59e0b'} style={{ marginTop: '2px' }} />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#f8fafc' }}>
-                          Planificaciones de Clase {totalPlanificaciones > 0 ? `(${totalPlanificaciones})` : '(Pendiente)'}
-                        </div>
-                        <div style={{ fontSize: '11.5px', color: totalPlanificaciones > 0 ? '#4ade80' : '#f59e0b', marginTop: '2px' }}>
-                          {totalPlanificaciones === 0 ? 'No has subido planificaciones aún' : `${planificacionesAprobadas} aprobada(s)`}
-                        </div>
-                      </div>
-                    </div>
+                        return (
+                          <div key={tarea.id} style={{ ...styles.recentDocItem, alignItems: 'flex-start', borderLeft: `3px solid ${badgeColor}`, paddingLeft: '10px', marginBottom: '12px' }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                <div style={{ fontSize: '13px', fontWeight: '600', color: '#f8fafc' }}>
+                                  {tarea.titulo}
+                                </div>
+                                <span style={{ 
+                                  fontSize: '10px', 
+                                  fontWeight: '700', 
+                                  padding: '2px 6px', 
+                                  borderRadius: '4px',
+                                  backgroundColor: badgeColor,
+                                  color: '#ffffff'
+                                }}>
+                                  {tarea.prioridad}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: '11.5px', color: '#cbd5e1', marginTop: '3px', lineHeight: '1.4' }}>
+                                {tarea.descripcion}
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px', fontSize: '11px', color: '#94a3b8' }}>
+                                <span>📅 Plazo: <strong style={{ color: '#f1f5f9' }}>{tarea.fechaLimite}</strong></span>
+                                {tarea.urlAccion && (
+                                  <button
+                                    onClick={() => navigate(tarea.urlAccion!)}
+                                    style={{
+                                      backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                                      color: '#60a5fa',
+                                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                                      borderRadius: '4px',
+                                      padding: '4px 8px',
+                                      fontSize: '11px',
+                                      fontWeight: '600',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    {tarea.accionRequerida || 'Completar →'}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               </>

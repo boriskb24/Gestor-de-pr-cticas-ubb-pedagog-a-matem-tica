@@ -375,5 +375,37 @@ export const getResumenAvanceEstudiante = async (email?: string, rut?: string): 
   }
 };
 
+export interface TareaPendienteDto {
+  id: string;
+  tipo: string;
+  categoria: string;
+  titulo: string;
+  descripcion: string;
+  estado: string;
+  prioridad: string;
+  fechaLimite: string;
+  diasRestantes?: number;
+  claseId?: number;
+  planificacionId?: number;
+  asignatura?: string;
+  tema?: string;
+  observacionesDocente?: string;
+  accionRequerida?: string;
+  urlAccion?: string;
+}
+
+export const getTareasPendientesEstudiante = async (email?: string, rut?: string): Promise<TareaPendienteDto[]> => {
+  try {
+    const params = new URLSearchParams();
+    if (email) params.append('email', email);
+    if (rut) params.append('rutEstudiante', rut);
+    const response = await API.get<TareaPendienteDto[]>(`/practicas/tareas-pendientes?${params.toString()}`);
+    return response.data || [];
+  } catch (error) {
+    return [];
+  }
+};
+
 export default API
+
 
