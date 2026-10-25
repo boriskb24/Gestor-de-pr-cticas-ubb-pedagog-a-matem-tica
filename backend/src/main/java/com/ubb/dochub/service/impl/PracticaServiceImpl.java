@@ -24,6 +24,7 @@ import com.ubb.dochub.service.PracticaService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -624,5 +625,180 @@ public class PracticaServiceImpl implements PracticaService {
                 "Invariante violada: El estudiante ya se encuentra inscrito en una práctica para el período académico " + anio + "-" + periodo + ". No se permite más de una práctica simultánea por período."
             );
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public EvaluacionesResponseDto obtenerEvolucionEvaluacionesEstudiante(
+            String rutEstudiante,
+            String correoEstudiante,
+            Long inscripcionId,
+            String consultorEmail,
+            TipoFiltroEvaluacion tipo) {
+
+        String rutNorm = (rutEstudiante != null && !rutEstudiante.trim().isEmpty()) ? rutEstudiante.trim() : null;
+        String correoNorm = (correoEstudiante != null && !correoEstudiante.trim().isEmpty()) ? correoEstudiante.trim().toLowerCase() : null;
+
+        // 1. Validación de parámetros de consulta
+        if (rutNorm == null && correoNorm == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Debe especificar el RUT o el correo del estudiante para consultar su evolución.");
+        }
+
+        // 2. Validación de existencia del estudiante
+        Estudiante estudiante = null;
+        if (rutNorm != null) {
+            estudiante = estudianteRepository.findById(rutNorm).orElse(null);
+        }
+        if (estudiante == null && correoNorm != null) {
+            estudiante = estudianteRepository.findByCorreo(correoNorm).orElse(null);
+        }
+        if (estudiante == null) {
+            List<Inscripcion> inscripciones = (rutNorm != null)
+                    ? inscripcionRepository.findByEstudianteRutWithOferta(rutNorm)
+                    : inscripcionRepository.findByEstudianteCorreoWithOferta(correoNorm);
+            if (!inscripciones.isEmpty()) {
+                estudiante = inscripciones.get(0).getEstudiante();
+            }
+        }
+        if (estudiante == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No se encontró ningún estudiante con los datos proporcionados.");
+        }
+
+        rutNorm = estudiante.getRut();
+        correoNorm = estudiante.getCorreo();
+
+        // 3. Validación de permisos del consultor (Prof. Colaborador / Tutor / Profesor Guía / Administrador)
+        if (consultorEmail != null && !consultorEmail.trim().isEmpty()) {
+            String emailConsultorNorm = consultorEmail.trim().toLowerCase();
+            if (!"admin@ubiobio.cl".equalsIgnoreCase(emailConsultorNorm)) {
+                boolean esEstudiante = estudianteRepository.findByCorreo(emailConsultorNorm).isPresent();
+                if (esEstudiante && !emailConsultorNorm.equalsIgnoreCase(correoNorm)) {
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                            "Acceso denegado: Esta consulta de evolución histórica está reservada para Profesores Colaboradores, Tutores y Profesores Guía.");
+                }
+            }
+        }
+
+        TipoFiltroEvaluacion filtroEfectivo = (tipo != null) ? tipo : TipoFiltroEvaluacion.TODAS;
+        List<EvaluacionCLADto> listaClase = new ArrayList<>();
+        List<EvaluacionSEMDto> listaSemestral = new ArrayList<>();
+
+        // 4. Recuperación de Evaluaciones de Clase ordenadas cronológicamente para observar la evolución temporal
+        if (filtroEfectivo == TipoFiltroEvaluacion.CLASE || filtroEfectivo == TipoFiltroEvaluacion.TODAS) {
+            List<EvaluacionClase> evalClases = evaluacionClaseRepository.findHistoricoEvaluacionesEstudiante(rutNorm, correoNorm, inscripcionId);
+            for (EvaluacionClase ec : evalClases) {
+                Estudiante est = ec.getClase() != null && ec.getClase().getInscripcion() != null
+                        ? ec.getClase().getInscripcion().getEstudiante()
+                        : estudiante;
+                String nombreComp = est != null
+                        ? (est.getPrimerNombre() + " " + est.getApellidoPaterno() + " " + est.getApellidoMaterno()).trim()
+                        : "Estudiante";
+                String rutEst = est != null ? est.getRut() : rutNorm;
+                java.time.LocalDateTime fechaClaseHora = ec.getClase() != null && ec.getClase().getFecha() != null
+                        ? ec.getClase().getFecha().atStartOfDay()
+                        : null;
+
+                String archivoUrl = "/api/practicas/evaluaciones/clase/" + ec.getId() + "/archivo";
+                String nombreArchivo = ec.getArchivo() != null
+                        ? java.nio.file.Paths.get(ec.getArchivo()).getFileName().toString()
+                        : "Pauta_Evaluacion.pdf";
+
+                Evaluador ev = ec.getEvaluador();
+                String evaluadorNombre = ev != null
+                        ? (ev.getPrimerNombre() + " " + ev.getApellidoPaterno() + " " + ev.getApellidoMaterno()).trim()
+                        : "Evaluador No Asignado";
+                String evaluadorRut = ev != null ? ev.getRut() : "";
+                String evaluadorTipo = ev != null && ev.getTipo() != null ? ev.getTipo().name() : "";
+
+                Oferta of = ec.getClase() != null && ec.getClase().getInscripcion() != null
+                        ? ec.getClase().getInscripcion().getOferta()
+                        : null;
+                Integer anio = of != null ? of.getAnio() : null;
+                Integer periodo = of != null ? of.getPeriodo() : null;
+                String asignaturaNombre = (of != null && of.getAsignaturaPractica() != null)
+                        ? of.getAsignaturaPractica().getNombre()
+                        : (ec.getClase() != null ? ec.getClase().getAsignatura() : "");
+
+                listaClase.add(new EvaluacionCLADto(
+                        ec.getId(),
+                        rutEst,
+                        nombreComp,
+                        "CLASE",
+                        null,
+                        null,
+                        fechaClaseHora,
+                        archivoUrl,
+                        nombreArchivo,
+                        evaluadorNombre,
+                        evaluadorRut,
+                        evaluadorTipo,
+                        anio,
+                        periodo,
+                        asignaturaNombre
+                ));
+            }
+        }
+
+        // 5. Recuperación de Evaluaciones Semestrales ordenadas cronológicamente para observar la evolución temporal
+        if (filtroEfectivo == TipoFiltroEvaluacion.SEMESTRAL || filtroEfectivo == TipoFiltroEvaluacion.TODAS) {
+            List<EvaluacionSemestral> evalSemestrales = evaluacionSemestralRepository.findHistoricoEvaluacionesEstudiante(rutNorm, correoNorm, inscripcionId);
+            for (EvaluacionSemestral es : evalSemestrales) {
+                Estudiante est = es.getAsignacion() != null && es.getAsignacion().getInscripcion() != null
+                        ? es.getAsignacion().getInscripcion().getEstudiante()
+                        : estudiante;
+                String nombreComp = est != null
+                        ? (est.getPrimerNombre() + " " + est.getApellidoPaterno() + " " + est.getApellidoMaterno()).trim()
+                        : "Estudiante";
+                String rutEst = est != null ? est.getRut() : rutNorm;
+                String archivoUrl = "/api/practicas/evaluaciones/semestral/" + es.getId() + "/archivo";
+                String nombreArchivo = es.getArchivo() != null
+                        ? java.nio.file.Paths.get(es.getArchivo()).getFileName().toString()
+                        : "Evaluacion_Semestral.pdf";
+
+                Evaluador ev = es.getAsignacion() != null ? es.getAsignacion().getEvaluador() : null;
+                String evaluadorNombre = ev != null
+                        ? (ev.getPrimerNombre() + " " + ev.getApellidoPaterno() + " " + ev.getApellidoMaterno()).trim()
+                        : "Evaluador No Asignado";
+                String evaluadorRut = ev != null ? ev.getRut() : "";
+                String evaluadorTipo = ev != null && ev.getTipo() != null ? ev.getTipo().name() : "";
+
+                Oferta of = es.getAsignacion() != null && es.getAsignacion().getInscripcion() != null
+                        ? es.getAsignacion().getInscripcion().getOferta()
+                        : null;
+                Integer anio = of != null ? of.getAnio() : null;
+                Integer periodo = of != null ? of.getPeriodo() : null;
+                String asignaturaNombre = (of != null && of.getAsignaturaPractica() != null)
+                        ? of.getAsignaturaPractica().getNombre()
+                        : es.getAsignatura();
+
+                listaSemestral.add(new EvaluacionSEMDto(
+                        es.getId(),
+                        rutEst,
+                        nombreComp,
+                        "SEMESTRAL",
+                        null,
+                        null,
+                        es.getFecha(),
+                        archivoUrl,
+                        nombreArchivo,
+                        evaluadorNombre,
+                        evaluadorRut,
+                        evaluadorTipo,
+                        anio,
+                        periodo,
+                        asignaturaNombre
+                ));
+            }
+        }
+
+        // Ordenamiento ascendente estricto por fecha para reflejar la evolución temporal del desempeño
+        listaClase.sort(java.util.Comparator.comparing(
+                EvaluacionCLADto::getFecha,
+                java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())));
+        listaSemestral.sort(java.util.Comparator.comparing(
+                EvaluacionSEMDto::getFecha,
+                java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())));
+
+        return new EvaluacionesResponseDto(listaClase, listaSemestral);
     }
 }

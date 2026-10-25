@@ -32,8 +32,10 @@ public interface EvaluacionSemestralRepository extends JpaRepository<EvaluacionS
            "JOIN a.inscripcion i " +
            "JOIN i.oferta o " +
            "JOIN o.asignaturaPractica asig " +
-           "WHERE ((:rutProfesor IS NOT NULL AND o.profesor.rut = :rutProfesor) " +
-           "    OR (:correoProfesor IS NOT NULL AND LOWER(o.profesor.correo) = LOWER(:correoProfesor))) " +
+           "LEFT JOIN a.evaluador ev " +
+           "WHERE ((:rutProfesor IS NOT NULL AND (o.profesor.rut = :rutProfesor OR (ev IS NOT NULL AND ev.rut = :rutProfesor))) " +
+           "    OR (:correoProfesor IS NOT NULL AND (LOWER(o.profesor.correo) = LOWER(:correoProfesor) OR (ev IS NOT NULL AND LOWER(ev.correo) = LOWER(:correoProfesor)))) " +
+           "    OR (:correoProfesor = 'admin@ubiobio.cl')) " +
            "  AND (:rutEstudiante IS NULL OR i.estudiante.rut = :rutEstudiante) " +
            "  AND (:inscripcionId IS NULL OR i.id = :inscripcionId)")
     List<EvaluacionSemestral> findEvaluacionesPorProfesor(
@@ -59,4 +61,31 @@ public interface EvaluacionSemestralRepository extends JpaRepository<EvaluacionS
             @Param("correo") String correo,
             @Param("rut") String rut,
             @Param("inscripcionId") Long inscripcionId);
+
+    @Query("SELECT es FROM EvaluacionSemestral es " +
+           "LEFT JOIN FETCH es.asignacion a " +
+           "LEFT JOIN FETCH a.inscripcion i " +
+           "LEFT JOIN FETCH i.estudiante e " +
+           "LEFT JOIN FETCH i.oferta o " +
+           "LEFT JOIN FETCH o.asignaturaPractica ap " +
+           "LEFT JOIN FETCH a.evaluador ev " +
+           "WHERE ((:rutEstudiante IS NOT NULL AND i.estudiante.rut = :rutEstudiante) " +
+           "    OR (:correoEstudiante IS NOT NULL AND LOWER(i.estudiante.correo) = LOWER(:correoEstudiante))) " +
+           "  AND (:inscripcionId IS NULL OR i.id = :inscripcionId) " +
+           "ORDER BY es.fecha ASC, es.id ASC")
+    List<EvaluacionSemestral> findHistoricoEvaluacionesEstudiante(
+            @Param("rutEstudiante") String rutEstudiante,
+            @Param("correoEstudiante") String correoEstudiante,
+            @Param("inscripcionId") Long inscripcionId);
+
+    @Query("SELECT es FROM EvaluacionSemestral es " +
+           "LEFT JOIN FETCH es.asignacion a " +
+           "LEFT JOIN FETCH a.inscripcion i " +
+           "LEFT JOIN FETCH i.estudiante e " +
+           "LEFT JOIN FETCH i.oferta o " +
+           "LEFT JOIN FETCH o.asignaturaPractica ap " +
+           "LEFT JOIN FETCH a.evaluador ev " +
+           "WHERE i.estudiante.rut = :rutEstudiante " +
+           "ORDER BY es.fecha ASC, es.id ASC")
+    List<EvaluacionSemestral> findHistoricoPorRutEstudiante(@Param("rutEstudiante") String rutEstudiante);
 }

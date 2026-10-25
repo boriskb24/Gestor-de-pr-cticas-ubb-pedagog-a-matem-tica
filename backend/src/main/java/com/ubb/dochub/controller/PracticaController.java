@@ -123,6 +123,34 @@ public class PracticaController {
         return ResponseEntity.ok(response);
     }
 
+    // 2c. Consulta de evolución histórica de evaluaciones para Prof. Colaborador / Tutor
+    @GetMapping("/evaluaciones/evolucion")
+    public ResponseEntity<EvaluacionesResponseDto> obtenerEvolucionEvaluaciones(
+            @RequestParam(required = false) String rutEstudiante,
+            @RequestParam(required = false) String correoEstudiante,
+            @RequestParam(required = false) Long inscripcionId,
+            @RequestParam(value = "userEmail", required = false) String userEmail,
+            @RequestParam(value = "evaluadorEmail", required = false) String evaluadorEmail,
+            @RequestParam(defaultValue = "TODAS") TipoFiltroEvaluacion tipo) {
+        String effectiveConsultorEmail = (userEmail != null && !userEmail.isBlank()) ? userEmail : evaluadorEmail;
+        EvaluacionesResponseDto response = practicaService.obtenerEvolucionEvaluacionesEstudiante(
+                rutEstudiante, correoEstudiante, inscripcionId, effectiveConsultorEmail, tipo);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/estudiantes/{rut}/evaluaciones/evolucion")
+    public ResponseEntity<EvaluacionesResponseDto> obtenerEvolucionPorRutEstudiante(
+            @PathVariable("rut") String rut,
+            @RequestParam(required = false) Long inscripcionId,
+            @RequestParam(value = "userEmail", required = false) String userEmail,
+            @RequestParam(value = "evaluadorEmail", required = false) String evaluadorEmail,
+            @RequestParam(defaultValue = "TODAS") TipoFiltroEvaluacion tipo) {
+        String effectiveConsultorEmail = (userEmail != null && !userEmail.isBlank()) ? userEmail : evaluadorEmail;
+        EvaluacionesResponseDto response = practicaService.obtenerEvolucionEvaluacionesEstudiante(
+                rut, null, inscripcionId, effectiveConsultorEmail, tipo);
+        return ResponseEntity.ok(response);
+    }
+
     // Visualizar PDF de evaluación de clase con validación de dominio
     @GetMapping("/evaluaciones/clase/{id}/archivo")
     public ResponseEntity<Resource> verArchivoEvaluacionClase(

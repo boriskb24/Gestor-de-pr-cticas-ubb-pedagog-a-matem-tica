@@ -34,4 +34,12 @@ public interface PracticaService {
 
     // Validación de invariante: máximo 1 práctica por estudiante en el mismo período académico
     void validarInscripcionUnicaPorPeriodo(String rutEstudiante, String correoEstudiante, Integer anio, Integer periodo);
+
+    // Consulta histórica para evolución del desempeño del estudiante (Prof. Colaborador / Tutor / Profesor)
+    EvaluacionesResponseDto obtenerEvolucionEvaluacionesEstudiante(
+            String rutEstudiante,
+            String correoEstudiante,
+            Long inscripcionId,
+            String consultorEmail,
+            TipoFiltroEvaluacion tipo);
 }
