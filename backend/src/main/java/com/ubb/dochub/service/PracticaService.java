@@ -50,4 +50,22 @@ public interface PracticaService {
 
     // Consulta detallada de tareas, documentos y evaluaciones pendientes con sus fechas límite
     List<Map<String, Object>> obtenerTareasPendientesEstudiante(String correoEstudiante, String rutEstudiante, Long inscripcionId);
+
+    // Respaldo histórico de informes finales para Coordinador de prácticas
+    List<Map<String, Object>> obtenerRespaldoHistoricoInformes(
+            String consultorEmail,
+            String estudiante,
+            String asignatura,
+            Integer anio,
+            Integer periodo,
+            Boolean soloHistoricos);
+
+    default List<Map<String, Object>> obtenerRespaldoHistoricoInformes(
+            String consultorEmail,
+            String estudiante,
+            String asignatura,
+            Integer anio,
+            Integer periodo) {
+        return obtenerRespaldoHistoricoInformes(consultorEmail, estudiante, asignatura, anio, periodo, null);
+    }
 }

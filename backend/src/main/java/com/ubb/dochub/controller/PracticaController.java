@@ -15,7 +15,9 @@ import com.ubb.dochub.repository.EvaluacionSemestralRepository;
 import com.ubb.dochub.repository.InformeRepository;
 import com.ubb.dochub.repository.InscripcionRepository;
 import com.ubb.dochub.repository.OfertaRepository;
+import com.ubb.dochub.repository.UserRepository;
 import com.ubb.dochub.service.PracticaService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
@@ -50,6 +52,9 @@ public class PracticaController {
     private final EstudianteRepository estudianteRepository;
     private final EvaluacionClaseRepository evaluacionClaseRepository;
     private final EvaluacionSemestralRepository evaluacionSemestralRepository;
+
+    @Autowired(required = false)
+    private UserRepository userRepository;
 
     public PracticaController(
             PracticaService practicaService,
@@ -91,6 +96,32 @@ public class PracticaController {
             return ResponseEntity.noContent().build();
         }
         return ResponseEntity.ok(response);
+    }
+
+    // 1.2 Respaldo histórico de informes finales para el Coordinador de prácticas
+    @GetMapping({"/informes/historial", "/informes-historicos", "/respaldo-historico"})
+    public ResponseEntity<List<Map<String, Object>>> obtenerHistorialInformes(
+            @RequestParam(value = "userEmail", required = false) String userEmail,
+            @RequestParam(value = "email", required = false) String email,
+            @RequestParam(value = "estudiante", required = false) String estudiante,
+            @RequestParam(value = "asignatura", required = false) String asignatura,
+            @RequestParam(value = "codigoAsignatura", required = false) String codigoAsignatura,
+            @RequestParam(value = "anio", required = false) Integer anio,
+            @RequestParam(value = "periodo", required = false) Integer periodo,
+            @RequestParam(value = "soloHistoricos", required = false) Boolean soloHistoricos) {
+
+        String effectiveEmail = (userEmail != null && !userEmail.isBlank()) ? userEmail : email;
+        String effectiveAsignatura = (asignatura != null && !asignatura.isBlank()) ? asignatura : codigoAsignatura;
+
+        List<Map<String, Object>> respaldo = practicaService.obtenerRespaldoHistoricoInformes(
+                effectiveEmail,
+                estudiante,
+                effectiveAsignatura,
+                anio,
+                periodo,
+                soloHistoricos);
+
+        return ResponseEntity.ok(respaldo);
     }
 
     // 2. Evaluaciones de profesor (Pablo)
@@ -278,16 +309,22 @@ public class PracticaController {
         if (userEmail != null && !userEmail.isBlank()) {
             String emailNorm = userEmail.trim().toLowerCase();
             if (!"admin@ubiobio.cl".equalsIgnoreCase(emailNorm)) {
-                Inscripcion insc = inf.getInscripcion();
-                boolean esEstudiante = insc != null && insc.getEstudiante() != null
-                        && emailNorm.equalsIgnoreCase(insc.getEstudiante().getCorreo());
-                boolean esProfesor = insc != null && insc.getOferta() != null && insc.getOferta().getProfesor() != null
-                        && emailNorm.equalsIgnoreCase(insc.getOferta().getProfesor().getCorreo());
-                boolean esEvaluador = insc != null && asignacionRepository.findByInscripcionIdWithEvaluador(insc.getId()).stream()
-                        .anyMatch(a -> a.getEvaluador() != null && emailNorm.equalsIgnoreCase(a.getEvaluador().getCorreo()));
+                boolean esCoordinador = userRepository != null && userRepository.findByEmail(emailNorm)
+                        .map(u -> u.getRole() != null && (u.getRole().equalsIgnoreCase("Administrador") || u.getRole().toLowerCase().contains("coordinador")))
+                        .orElse(false);
 
-                if (!esEstudiante && !esProfesor && !esEvaluador) {
-                    throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Acceso denegado: No tiene permisos para visualizar este informe final fuera de su dominio.");
+                if (!esCoordinador) {
+                    Inscripcion insc = inf.getInscripcion();
+                    boolean esEstudiante = insc != null && insc.getEstudiante() != null
+                            && emailNorm.equalsIgnoreCase(insc.getEstudiante().getCorreo());
+                    boolean esProfesor = insc != null && insc.getOferta() != null && insc.getOferta().getProfesor() != null
+                            && emailNorm.equalsIgnoreCase(insc.getOferta().getProfesor().getCorreo());
+                    boolean esEvaluador = insc != null && asignacionRepository.findByInscripcionIdWithEvaluador(insc.getId()).stream()
+                            .anyMatch(a -> a.getEvaluador() != null && emailNorm.equalsIgnoreCase(a.getEvaluador().getCorreo()));
+
+                    if (!esEstudiante && !esProfesor && !esEvaluador) {
+                        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Acceso denegado: No tiene permisos para visualizar este informe final fuera de su dominio.");
+                    }
                 }
             }
         }

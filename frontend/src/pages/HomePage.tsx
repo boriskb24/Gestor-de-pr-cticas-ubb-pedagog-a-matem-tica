@@ -62,7 +62,7 @@ export const HomePage: React.FC = () => {
     if (saved) {
       try {
         return JSON.parse(saved)
-      } catch {}
+      } catch { }
     }
     return INITIAL_PRACTICE_STUDENTS
   })
@@ -116,8 +116,8 @@ export const HomePage: React.FC = () => {
       newStudentStatus === 'Convenio Aprobado'
         ? 'status-approved'
         : newStudentStatus === 'En Revisión Académica'
-        ? 'status-review'
-        : 'status-pending'
+          ? 'status-review'
+          : 'status-pending'
 
     const newStudent: PracticeStudent = {
       id: newStudentID.trim(),
@@ -219,7 +219,7 @@ export const HomePage: React.FC = () => {
       if (rawUserInforme) {
         try {
           setInformeEntregado(JSON.parse(rawUserInforme))
-        } catch {}
+        } catch { }
       }
     }
 
@@ -550,13 +550,13 @@ export const HomePage: React.FC = () => {
                       )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                      <span style={{ 
-                        backgroundColor: resumenAvance?.estadoGeneral === 'FINALIZADA' ? '#10b981' : resumenAvance?.estadoGeneral === 'EN_REVISION_FINAL' ? '#0284c7' : '#f59e0b', 
-                        color: '#ffffff', 
-                        padding: '4px 12px', 
-                        borderRadius: '9999px', 
-                        fontSize: '12px', 
-                        fontWeight: '600' 
+                      <span style={{
+                        backgroundColor: resumenAvance?.estadoGeneral === 'FINALIZADA' ? '#10b981' : resumenAvance?.estadoGeneral === 'EN_REVISION_FINAL' ? '#0284c7' : '#f59e0b',
+                        color: '#ffffff',
+                        padding: '4px 12px',
+                        borderRadius: '9999px',
+                        fontSize: '12px',
+                        fontWeight: '600'
                       }}>
                         {resumenAvance ? resumenAvance.estadoGeneral.replace(/_/g, ' ') : (tieneInformeFinal ? 'Informe Entregado' : 'Informe Pendiente')}
                       </span>
@@ -723,10 +723,10 @@ export const HomePage: React.FC = () => {
                   <div style={styles.cardHeader}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                       <h3 style={styles.cardTitle}>Tareas y Acciones Pendientes</h3>
-                      <span style={{ 
-                        fontSize: '11px', 
-                        fontWeight: '600', 
-                        padding: '3px 8px', 
+                      <span style={{
+                        fontSize: '11px',
+                        fontWeight: '600',
+                        padding: '3px 8px',
                         borderRadius: '9999px',
                         backgroundColor: tareasPendientes.length > 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
                         color: tareasPendientes.length > 0 ? '#f87171' : '#4ade80'
@@ -753,10 +753,10 @@ export const HomePage: React.FC = () => {
                                 <div style={{ fontSize: '13px', fontWeight: '600', color: '#f8fafc' }}>
                                   {tarea.titulo}
                                 </div>
-                                <span style={{ 
-                                  fontSize: '10px', 
-                                  fontWeight: '700', 
-                                  padding: '2px 6px', 
+                                <span style={{
+                                  fontSize: '10px',
+                                  fontWeight: '700',
+                                  padding: '2px 6px',
                                   borderRadius: '4px',
                                   backgroundColor: badgeColor,
                                   color: '#ffffff'
