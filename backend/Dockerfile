@@ -30,9 +30,9 @@ RUN addgroup -S spring && adduser -S spring -G spring
 # Copy built JAR from builder stage
 COPY --chown=spring:spring --from=builder /build/target/*.jar app.jar
 
-# Copy entrypoint script
+# Copy entrypoint script (strip Windows CRLF line endings if present)
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
 EXPOSE 8080
 
