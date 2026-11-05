@@ -1,9 +1,5 @@
 # 🎓 UBB DocHUB — Gestor de Prácticas Profesionales (Pedagogía en Educación Matemática)
 
-Plataforma web integral para la **gestión documental, supervisión de prácticas profesionales, revisión de planificaciones de clase y seguimiento de evaluaciones** de la carrera de Pedagogía en Educación Matemática de la **Facultad de Educación y Humanidades — Universidad del Bío-Bío (UBB)**.
-
-🔗 **Repositorio:** [https://github.com/boriskb24/Gestor-de-pr-cticas-ubb-pedagog-a-matem-tica.git](https://github.com/boriskb24/Gestor-de-pr-cticas-ubb-pedagog-a-matem-tica.git)
-
 ---
 
 ## 📸 Vista General del Sistema (Módulos Principales)
